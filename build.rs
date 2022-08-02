@@ -11,42 +11,20 @@ use foreman::{LibKind, SearchKind};
 
 fn main() {
     let out_dir = foreman::out_dir().unwrap();
-    let host = foreman::host().unwrap();
-    let valgrind_dir = out_dir.join("valgrind");
-    let vex_dir = valgrind_dir.join("VEX");
+    let vex_dir = out_dir.join("vex");
 
     {
-        let (arch, platform) = {
-            let mut host_parts = host.as_str().split("-");
-            let arch = host_parts.next().unwrap();
-            let arch = if arch == "x86_64" { "amd64" } else { arch };
-            let _ = host_parts.next();
-            let platform = host_parts.next().unwrap();
+        // Copy and build vex in OUT_DIR
+        let options = CopyOptions { overwrite: false, skip_exist: true, buffer_size: 1<<16 };
+        copy("vex", &out_dir, &options).unwrap();
 
-            (arch, platform)
-        };
-
-        // Copy and build valgrind in OUT_DIR
-        let options = CopyOptions { overwrite: true, skip_exist: true, buffer_size: 1<<16 };
-        copy("valgrind", &out_dir, &options).unwrap();
-
-        if !valgrind_dir.join("configure").exists() {
-            Command::new("./autogen.sh")
-                .current_dir(&valgrind_dir)
-                .status().unwrap();
-        }
-        if !vex_dir.join("Makefile").exists() {
-            Command::new("./configure")
-                .current_dir(&valgrind_dir)
-                .status().unwrap();
-        }
-        Command::new("make").args(&["-j", &format!("{}", foreman::num_jobs().unwrap())])
+        Command::new("make").args(&["-f", "Makefile-gcc", "-j", &format!("{}", foreman::num_jobs().unwrap())])
             .current_dir(&vex_dir)
             .status().unwrap();
 
         // Tell rustc to link to libvex
         foreman::link_search(SearchKind::Native, &vex_dir);
-        foreman::link_lib(LibKind::Static, &format!("vex-{}-{}", arch, platform));
+        foreman::link_lib(LibKind::Static, "vex");
     }
 
     {
@@ -54,7 +32,7 @@ fn main() {
         let bindings = bindgen::Builder::default()
             .header("wrapper.h")
             .blacklist_type("_IRStmt__bindgen_ty_1__bindgen_ty_1")
-            .clang_arg(&format!("-I{}", &valgrind_dir.to_str().unwrap()))
+            .clang_arg(&format!("-I{}", &vex_dir.to_str().unwrap()))
             .generate()
             .expect("Unable to generate bindings");
         bindings.write_to_file(out_dir.join("bindings.rs"))
