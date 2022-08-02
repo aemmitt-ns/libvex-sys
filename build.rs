@@ -8,7 +8,6 @@ use std::process::Command;
 use fs_extra::dir::{copy, CopyOptions};
 use foreman::{LibKind, SearchKind};
 
-
 fn main() {
     let out_dir = foreman::out_dir().unwrap();
     let vex_dir = out_dir.join("vex");
@@ -18,7 +17,14 @@ fn main() {
         let options = CopyOptions { overwrite: false, skip_exist: true, buffer_size: 1<<16 };
         copy("vex", &out_dir, &options).unwrap();
 
-        Command::new("make").args(&["-f", "Makefile-gcc", "-j", &format!("{}", foreman::num_jobs().unwrap())])
+        // i assume this is the right thing to do for windows?
+        let makefile = if std::env::consts::OS == "windows" {
+            "Makefile-msvc"
+        } else {
+            "Makefile-gcc"
+        };
+
+        Command::new("make").args(&["-f", makefile, "-j", &format!("{}", foreman::num_jobs().unwrap())])
             .current_dir(&vex_dir)
             .status().unwrap();
 
